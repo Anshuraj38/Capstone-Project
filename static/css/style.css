@@ -1,0 +1,27 @@
+* {
+    margin: 0;
+    padding: 0;
+
+}
+
+body {
+    background-color: lightcyan;
+}
+
+.main {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+}
+
+.loginbox {
+    width: 350px;
+    padding: 30px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+
+
+}
