@@ -28,11 +28,9 @@ def perform_registration():
     response = dbo.insert(name, email, password)
 
     if response:
-        session['name'] = name
-        session['email'] = email
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('index'))
     else:
-        return "Email already existed"
+        return render_template('signup.html', error='Email already existed')
 
 @app.route('/perform_login', methods=['POST'])
 def perform_login():

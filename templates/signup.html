@@ -15,7 +15,12 @@
     <div class="main">
         <div class="loginbox">
             <h2 class="text-center mb-4">signup</h2>
-            <form action="/perform_registration" method="POST">
+            {% if error %}
+            <div class="alert alert-danger" role="alert">
+                {{ error }}
+            </div>
+            {% endif %}
+            <form action="{{ url_for('perform_registration') }}" method="POST">
 
                 <div class="mb-3">
 
