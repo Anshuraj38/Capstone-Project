@@ -1,0 +1,44 @@
+/* static/css/history.css */
+
+.container {
+    max-width: 1000px;
+    margin: 50px auto;
+    padding: 0 20px;
+}
+
+.back-btn {
+    text-decoration: none;
+    color: #888;
+    font-size: 16px;
+    display: inline-block;
+    margin-bottom: 30px;
+    transition: 0.3s;
+}
+
+.back-btn:hover {
+    color: #fff;
+}
+
+.history-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* 2 boxes per row */
+    gap: 25px;
+}
+
+.box {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #444;
+    padding: 60px 20px;
+    text-align: center;
+    color: white;
+    font-size: 20px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.box:hover {
+    border-color: #007bff;
+    background: rgba(0, 123, 255, 0.1);
+    transform: translateY(-5px)}
+   
