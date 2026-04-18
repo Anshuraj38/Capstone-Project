@@ -112,7 +112,7 @@
         </header>
 
         <!-- Hidden file input -->
-        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none"
+        <input type="file" id="fileInput" accept=".csv,.xlsx" style="display:none"
             onchange="handleFileUpload(this)">
 
         <!-- ── Upload / Idle State ─────────────────────────────────── -->
@@ -131,7 +131,7 @@
                 <h2>Upload your dataset</h2>
                 <p>Drag &amp; drop a CSV or Excel file here, or click to browse</p>
                 <button class="btn-upload" onclick="document.getElementById('fileInput').click()">Browse File</button>
-                <span class="upload-hint">Supports .csv, .xlsx, .xls · Max 16 MB</span>
+                <span class="upload-hint">Supports .csv, .xlsx · Max 16 MB</span>
             </div>
         </section>
 
