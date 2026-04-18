@@ -15,7 +15,7 @@
 
             <h2 class="text-center mb-4">Login</h2>
 
-            <form action="/perform_login" method="POST">
+            <form action="{{ url_for('perform_login') }}" method="POST">
 
                 <div class="mb-3">
 
@@ -34,7 +34,7 @@
 
                 <p class="text-center">
                     Don't have an account?
-                    <a href="/register">Sign Up</a>
+                    <a href="{{ url_for('register') }}">Sign Up</a>
                 </p>
             </form>
 

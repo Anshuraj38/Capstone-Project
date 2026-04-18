@@ -43,6 +43,9 @@ def perform_registration():
         return redirect(url_for('dashboard'))
     else:
         return "Email already exists"
+        return redirect(url_for('index'))
+    else:
+        return render_template('signup.html', error='Email already existed')
 
 @app.route('/perform_login', methods=['POST'])
 def perform_login():
