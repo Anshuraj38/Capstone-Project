@@ -1,0 +1,13 @@
+CustomerID,Name,Country,Salary,Age,PurchaseAmount
+1,John Doe,US,50000,29,120
+2,Jane Smith,U.S.A.,,34,200
+3,Robert Brown,United States,62000,41,150
+4,Alice Green,India,45000,,300
+5,Tom White,INDIA,45000,27,300
+6,Emma Black,India,45000,27,300
+6,Emma Black,India,45000,27,300
+7,Chris Blue,,52000,35,500
+8,Mike Gray,USA,7000000,31,100
+9,Sara Gold,United States,48000,29,110
+10,David King,US,,22,90
+11,John Doe,US,50000,29,120
