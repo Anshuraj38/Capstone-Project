@@ -100,3 +100,34 @@
             <span class="upload-hint">Supports .csv, .xlsx, .xls · Max 16 MB</span>
         </div>
     </section>
+    
+        <!-- ── Dashboard State ────────────────────────────────────── -->
+    <section id="dashboardSection" class="dashboard-section" style="display:none">
+
+        <!-- Dataset title + stepper -->
+        <div class="dataset-header">
+            <h2 class="dataset-title">Dataset: <span id="datasetName">–</span></h2>
+        </div>
+
+        <!-- Stepper -->
+        <div class="stepper">
+            <div class="step done" id="step1">
+                <span class="step-num">1. Upload</span>
+                <span class="step-status">(Complete)</span>
+            </div>
+            <span class="step-arrow">→</span>
+            <div class="step active" id="step2">
+                <span class="step-num">2. Profiling</span>
+                <span class="step-status">(In Progress)</span>
+            </div>
+            <span class="step-arrow">→</span>
+            <div class="step" id="step3">
+                <span class="step-num">3. Clean</span>
+                <span class="step-status"></span>
+            </div>
+            <span class="step-arrow">→</span>
+            <div class="step" id="step4">
+                <span class="step-num">4. Export</span>
+                <span class="step-status"></span>
+            </div>
+        </div>
