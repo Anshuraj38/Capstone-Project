@@ -1,4 +1,5 @@
 import json
+import os
 
 class Database:
     def insert(self, name, email, password):
@@ -22,4 +23,3 @@ class Database:
                 return user[email][0]
 
         return None
-
