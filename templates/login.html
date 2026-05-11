@@ -73,3 +73,13 @@
 
     </div>
 </div>
+
+<script>
+function togglePassword(id, btn) {
+    const input = document.getElementById(id);
+    input.type = input.type === 'password' ? 'text' : 'password';
+    btn.style.opacity = input.type === 'text' ? '1' : '0.5';
+}
+</script>
+</body>
+</html>
