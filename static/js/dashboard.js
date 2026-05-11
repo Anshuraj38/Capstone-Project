@@ -103,3 +103,137 @@ function renderColumnTable(columns) {
         tbody.appendChild(tr);
     });
 }
+
+// ── Preview Table ─────────────────────────────────────────────────
+function renderPreviewTable(rows) {
+    if (!rows.length) return;
+    const head = document.getElementById('previewHead');
+    const body = document.getElementById('previewBody');
+    const cols = Object.keys(rows[0]);
+    head.innerHTML = '<tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr>';
+    body.innerHTML = rows.map(row =>
+        '<tr>' + cols.map(c => `<td>${escapeHtml(String(row[c] ?? ''))}</td>`).join('') + '</tr>'
+    ).join('');
+}
+
+// ── Suggestions ───────────────────────────────────────────────────
+function renderSuggestions(suggestions) {
+    const container = document.getElementById('suggestionsContainer');
+    const none = document.getElementById('noSuggestions');
+    container.innerHTML = '';
+
+    if (!suggestions || suggestions.length === 0) {
+        none.style.display = 'flex';
+        return;
+    }
+    none.style.display = 'none';
+
+    const icons = { missing: '🔍', duplicate: '📋', normalize: '🔤', outlier: '📊' };
+
+    suggestions.forEach((s, i) => {
+        const div = document.createElement('div');
+        div.className = 'suggestion-item';
+        div.id = `sug-${i}`;
+
+        const viewBtn = s.type !== 'duplicate'
+            ? `<button class="sug-btn outline" onclick="viewSuggestion(${i})">View</button>`
+            : '';
+        const applyBtn = `<button class="sug-btn apply" onclick="applySuggestion(${i})">Apply</button>`;
+
+        div.innerHTML = `
+            <div class="sug-title">${icons[s.type] || '💡'} ${escapeHtml(s.title)}</div>
+            <div class="sug-desc">${escapeHtml(s.description)}</div>
+            <div class="sug-actions">${viewBtn}${applyBtn}</div>
+        `;
+        container.appendChild(div);
+    });
+}
+
+function applySuggestion(index) {
+    const s = currentSuggestions[index];
+    if (!s) return;
+    const el = document.getElementById(`sug-${index}`);
+    if (el) el.style.opacity = '0.5';
+    showLoading(`Applying: ${s.title}…`);
+
+    fetch('/clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: s.action, column: s.column })
+    })
+    .then(r => r.json())
+    .then(data => {
+        hideLoading();
+        if (data.error) { showToast(data.error, 'error'); return; }
+        showToast('Cleaning applied!', 'success');
+        const filename = document.getElementById('datasetName').textContent;
+        renderDashboard(filename, data.profile, data.suggestions);
+        updateStepper('clean');
+    })
+    .catch(() => { hideLoading(); showToast('Failed to apply cleaning.', 'error'); });
+}
+
+function viewSuggestion(index) {
+    const s = currentSuggestions[index];
+    showToast(`Column: "${s.column}" — ${s.description}`);
+}
+
+// ── NEW: Natural Language AI Cleaning ────────────────────────────
+function setAiInstruction(text) {
+    document.getElementById('aiCleanInput').value = text;
+    document.getElementById('aiCleanInput').focus();
+}
+
+function runAiClean() {
+    const input = document.getElementById('aiCleanInput');
+    const instruction = input.value.trim();
+    if (!instruction) { showToast('Please enter a cleaning instruction.', 'error'); return; }
+    if (!fileLoaded) { showToast('Upload a file first.', 'error'); return; }
+
+    const resultBox = document.getElementById('aiCleanResult');
+    resultBox.style.display = 'none';
+
+    const btn = document.getElementById('aiCleanBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Thinking…';
+
+    fetch('/ai_clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Apply';
+
+        if (data.error) {
+            resultBox.className = 'ai-clean-result error';
+            resultBox.innerHTML = `<strong>⚠ Error:</strong> ${escapeHtml(data.error)}`;
+            resultBox.style.display = 'block';
+            return;
+        }
+
+        const rowMsg = data.rows_affected > 0
+            ? ` <span class="rows-badge">-${data.rows_affected} rows</span>` : '';
+
+        resultBox.className = 'ai-clean-result success';
+        resultBox.innerHTML = `
+            <strong>✅ Done!</strong>${rowMsg}<br>
+            <span class="ai-explanation">${escapeHtml(data.message)}</span>
+            ${data.code_applied ? `<details class="code-details"><summary>View generated code</summary><pre>${escapeHtml(data.code_applied)}</pre></details>` : ''}
+        `;
+        resultBox.style.display = 'block';
+
+        input.value = '';
+        const filename = document.getElementById('datasetName').textContent;
+        renderDashboard(filename, data.profile, data.suggestions);
+        updateStepper('clean');
+        showToast('AI cleaning applied!', 'success');
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Apply';
+        showToast('AI request failed. Check your connection.', 'error');
+    });
+}
