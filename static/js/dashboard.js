@@ -1,12 +1,14 @@
 /* jshint esversion: 6 */
+'use strict';
 
 // ── State ─────────────────────────────────────────────────────────
 let currentSuggestions = [];
+let fileLoaded = false;
 
 // ── Section switching ─────────────────────────────────────────────
-function showSection(name) {
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    event.currentTarget.classList.add('active');
+function showSection(name, el) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    if (el) el.classList.add('active');
 }
 
 // ── File Upload ────────────────────────────────────────────────────
@@ -20,12 +22,11 @@ function handleDrop(e) {
 function handleFileUpload(input) {
     const file = input.files[0];
     if (file) uploadFile(file);
-    input.value = '';  // reset so same file can be re-uploaded
+    input.value = '';
 }
 
 function uploadFile(file) {
     showLoading('Uploading and profiling dataset…');
-
     const formData = new FormData();
     formData.append('file', file);
 
@@ -34,26 +35,34 @@ function uploadFile(file) {
         .then(data => {
             hideLoading();
             if (data.error) { showToast(data.error, 'error'); return; }
+            fileLoaded = true;
             renderDashboard(data.filename, data.profile, data.suggestions);
+            enableAiFeatures();
+            // Auto-fetch AI summary after upload
+            setTimeout(() => fetchAiSummary(true), 800);
         })
-        .catch(err => { hideLoading(); showToast('Upload failed. Try again.', 'error'); });
+        .catch(() => { hideLoading(); showToast('Upload failed. Try again.', 'error'); });
+}
+
+// ── Enable AI buttons once a file is loaded ───────────────────────
+function enableAiFeatures() {
+    document.getElementById('exportBtn').disabled = false;
+    document.getElementById('aiSummaryBtn').disabled = false;
+    document.getElementById('chatSendBtn').disabled = false;
+    document.getElementById('aiCleanBtn').disabled = false;
+    document.getElementById('aiCleanInput').disabled = false;
+    document.getElementById('chatInput').disabled = false;
 }
 
 // ── Render Dashboard ──────────────────────────────────────────────
 function renderDashboard(filename, profile, suggestions) {
     currentSuggestions = suggestions;
 
-    // Switch sections
     document.getElementById('uploadSection').style.display = 'none';
     document.getElementById('dashboardSection').style.display = 'block';
-
-    // Enable export
-    document.getElementById('exportBtn').disabled = false;
-
-    // Filename
     document.getElementById('datasetName').textContent = filename;
 
-    // Quality
+    // Quality score
     const q = profile.quality_score;
     const qEl = document.getElementById('qualityScore');
     qEl.textContent = q + '%';
@@ -67,18 +76,9 @@ function renderDashboard(filename, profile, suggestions) {
     document.getElementById('dupCount').textContent = profile.duplicates.toLocaleString();
     document.getElementById('schemaCount').textContent = profile.schema_issues;
 
-    // Column table
     renderColumnTable(profile.columns);
-
-    // Preview table
-    if (profile.sample && profile.sample.length > 0) {
-        renderPreviewTable(profile.sample);
-    }
-
-    // Suggestions
+    if (profile.sample && profile.sample.length > 0) renderPreviewTable(profile.sample);
     renderSuggestions(suggestions);
-
-    // Update stepper
     updateStepper('profiling');
 }
 
@@ -116,7 +116,7 @@ function renderPreviewTable(rows) {
     ).join('');
 }
 
-// ── AI Suggestions ────────────────────────────────────────────────
+// ── Suggestions ───────────────────────────────────────────────────
 function renderSuggestions(suggestions) {
     const container = document.getElementById('suggestionsContainer');
     const none = document.getElementById('noSuggestions');
@@ -128,12 +128,7 @@ function renderSuggestions(suggestions) {
     }
     none.style.display = 'none';
 
-    const icons = {
-        missing:   '🔍',
-        duplicate: '📋',
-        normalize: '🔤',
-        outlier:   '📊'
-    };
+    const icons = { missing: '🔍', duplicate: '📋', normalize: '🔤', outlier: '📊' };
 
     suggestions.forEach((s, i) => {
         const div = document.createElement('div');
@@ -154,14 +149,11 @@ function renderSuggestions(suggestions) {
     });
 }
 
-// ── Apply Suggestion ──────────────────────────────────────────────
 function applySuggestion(index) {
     const s = currentSuggestions[index];
     if (!s) return;
-
     const el = document.getElementById(`sug-${index}`);
     if (el) el.style.opacity = '0.5';
-
     showLoading(`Applying: ${s.title}…`);
 
     fetch('/clean', {
@@ -173,8 +165,7 @@ function applySuggestion(index) {
     .then(data => {
         hideLoading();
         if (data.error) { showToast(data.error, 'error'); return; }
-        showToast('Cleaning applied successfully!', 'success');
-        currentSuggestions = data.suggestions;
+        showToast('Cleaning applied!', 'success');
         const filename = document.getElementById('datasetName').textContent;
         renderDashboard(filename, data.profile, data.suggestions);
         updateStepper('clean');
@@ -187,69 +178,62 @@ function viewSuggestion(index) {
     showToast(`Column: "${s.column}" — ${s.description}`);
 }
 
-// ── Export ────────────────────────────────────────────────────────
-function exportFile() {
-    showToast('Preparing export…', 'info');
-    window.location.href = '/export';
-    updateStepper('export');
+// ── NEW: Natural Language AI Cleaning ────────────────────────────
+function setAiInstruction(text) {
+    document.getElementById('aiCleanInput').value = text;
+    document.getElementById('aiCleanInput').focus();
 }
 
-// ── Stepper ───────────────────────────────────────────────────────
-function updateStepper(phase) {
-    const phases = ['upload', 'profiling', 'clean', 'export'];
-    const ids = ['step1', 'step2', 'step3', 'step4'];
-    const statuses = ['Complete', 'In Progress', '', ''];
-    const phaseIdx = phases.indexOf(phase);
+function runAiClean() {
+    const input = document.getElementById('aiCleanInput');
+    const instruction = input.value.trim();
+    if (!instruction) { showToast('Please enter a cleaning instruction.', 'error'); return; }
+    if (!fileLoaded) { showToast('Upload a file first.', 'error'); return; }
 
-    ids.forEach((id, i) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.className = 'step';
-        el.querySelector('.step-status').textContent = '';
-        if (i < phaseIdx) {
-            el.classList.add('done');
-            el.querySelector('.step-status').textContent = '(Complete)';
-        } else if (i === phaseIdx) {
-            el.classList.add('active');
-            el.querySelector('.step-status').textContent = '(In Progress)';
+    const resultBox = document.getElementById('aiCleanResult');
+    resultBox.style.display = 'none';
+
+    const btn = document.getElementById('aiCleanBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Thinking…';
+
+    fetch('/ai_clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Apply';
+
+        if (data.error) {
+            resultBox.className = 'ai-clean-result error';
+            resultBox.innerHTML = `<strong>⚠ Error:</strong> ${escapeHtml(data.error)}`;
+            resultBox.style.display = 'block';
+            return;
         }
+
+        const rowMsg = data.rows_affected > 0
+            ? ` <span class="rows-badge">-${data.rows_affected} rows</span>` : '';
+
+        resultBox.className = 'ai-clean-result success';
+        resultBox.innerHTML = `
+            <strong>✅ Done!</strong>${rowMsg}<br>
+            <span class="ai-explanation">${escapeHtml(data.message)}</span>
+            ${data.code_applied ? `<details class="code-details"><summary>View generated code</summary><pre>${escapeHtml(data.code_applied)}</pre></details>` : ''}
+        `;
+        resultBox.style.display = 'block';
+
+        input.value = '';
+        const filename = document.getElementById('datasetName').textContent;
+        renderDashboard(filename, data.profile, data.suggestions);
+        updateStepper('clean');
+        showToast('AI cleaning applied!', 'success');
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Apply';
+        showToast('AI request failed. Check your connection.', 'error');
     });
 }
-
-// ── Toast ─────────────────────────────────────────────────────────
-function showToast(msg, type = 'success') {
-    const toast = document.getElementById('toast');
-    const toastMsg = document.getElementById('toastMsg');
-    toastMsg.textContent = msg;
-    toast.style.background = type === 'error' ? '#ef4444' : type === 'info' ? '#4F8EF7' : '#22c55e';
-    toast.style.display = 'block';
-    clearTimeout(window._toastTimer);
-    window._toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 3500);
-}
-
-// ── Loading ───────────────────────────────────────────────────────
-function showLoading(text) {
-    document.getElementById('loadingText').textContent = text || 'Processing…';
-    document.getElementById('loadingOverlay').style.display = 'flex';
-}
-function hideLoading() {
-    document.getElementById('loadingOverlay').style.display = 'none';
-}
-
-// ── Utils ─────────────────────────────────────────────────────────
-function escapeHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
-// ── Global search filter ──────────────────────────────────────────
-document.getElementById('globalSearch').addEventListener('input', function () {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('.suggestion-item').forEach(el => {
-        const text = el.textContent.toLowerCase();
-        el.style.display = text.includes(q) ? 'block' : 'none';
-    });
-});
