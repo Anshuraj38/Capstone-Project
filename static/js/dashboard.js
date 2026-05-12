@@ -237,3 +237,87 @@ function runAiClean() {
         showToast('AI request failed. Check your connection.', 'error');
     });
 }
+
+// Allow Enter key to submit AI clean
+document.addEventListener('DOMContentLoaded', () => {
+    const aiInput = document.getElementById('aiCleanInput');
+    if (aiInput) {
+        aiInput.addEventListener('keydown', e => { if (e.key === 'Enter') runAiClean(); });
+        aiInput.disabled = true;
+    }
+    const chatInput = document.getElementById('chatInput');
+    if (chatInput) chatInput.disabled = true;
+    const aiCleanBtn = document.getElementById('aiCleanBtn');
+    if (aiCleanBtn) aiCleanBtn.disabled = true;
+
+    // Search filter
+    const search = document.getElementById('globalSearch');
+    if (search) {
+        search.addEventListener('input', function () {
+            const q = this.value.toLowerCase();
+            document.querySelectorAll('.suggestion-item').forEach(el => {
+                el.style.display = el.textContent.toLowerCase().includes(q) ? 'block' : 'none';
+            });
+        });
+    }
+});
+
+// ── NEW: Chat with your data ──────────────────────────────────────
+function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const question = input.value.trim();
+    if (!question) return;
+    if (!fileLoaded) { showToast('Upload a file first.', 'error'); return; }
+
+    appendChatMsg('user', question);
+    input.value = '';
+
+    const typingId = appendChatTyping();
+
+    fetch('/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question })
+    })
+    .then(r => r.json())
+    .then(data => {
+        removeTyping(typingId);
+        if (data.error) {
+            appendChatMsg('assistant', `⚠ ${data.error}`);
+        } else {
+            appendChatMsg('assistant', data.answer);
+        }
+    })
+    .catch(() => {
+        removeTyping(typingId);
+        appendChatMsg('assistant', '⚠ Could not reach the AI. Check your connection.');
+    });
+}
+
+function appendChatMsg(role, text) {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = `chat-msg ${role}`;
+    div.innerHTML = `<div class="chat-bubble">${escapeHtml(text)}</div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return div;
+}
+
+function appendChatTyping() {
+    const container = document.getElementById('chatMessages');
+    const id = 'typing-' + Date.now();
+    const div = document.createElement('div');
+    div.className = 'chat-msg assistant';
+    div.id = id;
+    div.innerHTML = '<div class="chat-bubble typing-bubble"><span></span><span></span><span></span></div>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return id;
+}
+
+function removeTyping(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+}
+
