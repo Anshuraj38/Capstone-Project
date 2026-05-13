@@ -131,3 +131,188 @@
                 <span class="step-status"></span>
             </div>
         </div>
+
+         <!-- ── AI Summary Banner ──────────────────────────────── -->
+        <div id="aiSummaryBanner" class="ai-summary-banner" style="display:none">
+            <div class="ai-summary-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            </div>
+            <div class="ai-summary-text" id="aiSummaryText">Generating AI health report…</div>
+            <button class="ai-summary-close" onclick="document.getElementById('aiSummaryBanner').style.display='none'">✕</button>
+        </div>
+
+        <div class="dashboard-grid">
+
+            <!-- Left panel -->
+            <div class="left-panel">
+
+                <!-- Data Health Overview -->
+                <div class="card">
+                    <h3 class="card-title">Data Health Overview</h3>
+                    <div class="health-top">
+                        <div class="health-stat">
+                            <span class="health-label">Quality Score:</span>
+                            <span class="health-value" id="qualityScore">–</span>
+                        </div>
+                        <div class="health-stat">
+                            <span class="health-label">Total Rows:</span>
+                            <span class="health-value" id="totalRows">–</span>
+                        </div>
+                        <div class="health-stat">
+                            <span class="health-label">Columns:</span>
+                            <span class="health-value" id="totalCols">–</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue Cards -->
+                <div class="issue-cards">
+                    <div class="issue-card red">
+                        <div class="issue-info">
+                            <span class="issue-label">Missing Values:</span>
+                            <span class="issue-value" id="missingCount">–</span>
+                            <span class="issue-pct" id="missingPct"></span>
+                        </div>
+                        <canvas id="missingChart" width="120" height="50"></canvas>
+                    </div>
+                    <div class="issue-card orange">
+                        <div class="issue-info">
+                            <span class="issue-label">Duplicate Rows:</span>
+                            <span class="issue-value" id="dupCount">–</span>
+                        </div>
+                        <div class="dup-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="1.5"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V4a2 2 0 0 1 2-2h12"/></svg>
+                        </div>
+                    </div>
+                    <div class="issue-card yellow">
+                        <div class="issue-info">
+                            <span class="issue-label">Schema Issues:</span>
+                            <span class="issue-value" id="schemaCount">–</span>
+                        </div>
+                        <div class="schema-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="1.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── AI Natural Language Cleaning ───────────── -->
+                <div class="card ai-clean-card">
+                    <h3 class="card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4F8EF7" stroke-width="2" style="vertical-align:middle;margin-right:6px"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2"/><path d="M12 8v4l3 3"/></svg>
+                        Natural Language Cleaning
+                    </h3>
+                    <p class="ai-clean-hint">Tell the AI what to clean in plain English.</p>
+                    <div class="ai-clean-examples">
+                        <span class="ai-example-chip" onclick="setAiInstruction(this.textContent)">Remove negative rows</span>
+                        <span class="ai-example-chip" onclick="setAiInstruction(this.textContent)">Fill missing with unknown</span>
+                        <span class="ai-example-chip" onclick="setAiInstruction(this.textContent)">Drop duplicate rows</span>
+                        <span class="ai-example-chip" onclick="setAiInstruction(this.textContent)">Trim whitespace in all text columns</span>
+                    </div>
+                    <div class="ai-clean-input-row">
+                        <input type="text" id="aiCleanInput" class="ai-clean-input" placeholder='e.g. "remove rows where salary is negative"'>
+                        <button class="btn-ai-clean" id="aiCleanBtn" onclick="runAiClean()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            Apply
+                        </button>
+                    </div>
+                    <div id="aiCleanResult" class="ai-clean-result" style="display:none"></div>
+                </div>
+
+                <!-- Column Details -->
+                <div class="card">
+                    <h3 class="card-title">Column Details</h3>
+                    <div class="col-table-wrap">
+                        <table class="col-table" id="colTable">
+                            <thead>
+                                <tr>
+                                    <th>Column</th>
+                                    <th>Type</th>
+                                    <th>Missing</th>
+                                    <th>Unique</th>
+                                </tr>
+                            </thead>
+                            <tbody id="colTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right panel -->
+            <div class="right-panel">
+
+                <!-- AI Suggestions -->
+                <div class="card suggestions-card">
+                    <h3 class="card-title">AI Cleaning Suggestions</h3>
+                    <div id="suggestionsContainer"></div>
+                    <div id="noSuggestions" class="no-suggestions" style="display:none">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#4F8EF7" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        <p>Your dataset looks clean! No issues found.</p>
+                    </div>
+                </div>
+
+                <!-- ── AI Chat Assistant ───────────────────────── -->
+                <div class="card ai-chat-card">
+                    <h3 class="card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" style="vertical-align:middle;margin-right:6px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        Ask About Your Data
+                    </h3>
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-msg assistant">
+                            <div class="chat-bubble">👋 Hi! Upload a dataset and ask me anything — like "which column has the most missing values?" or "should I remove outliers?"</div>
+                        </div>
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Ask a question about your data…" onkeydown="if(event.key==='Enter') sendChatMessage()">
+                        <button class="btn-chat-send" id="chatSendBtn" onclick="sendChatMessage()" disabled>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Data preview -->
+                <div class="card">
+                    <h3 class="card-title">Data Preview <span class="preview-hint">(first 5 rows)</span></h3>
+                    <div class="preview-table-wrap">
+                        <table class="preview-table" id="previewTable">
+                            <thead id="previewHead"></thead>
+                            <tbody id="previewBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </section>
+
+</main>
+
+<!-- ── AI Summary Modal ──────────────────────────────────────────── -->
+<div class="modal-overlay" id="aiSummaryModal" style="display:none" onclick="closeAiSummaryModal(event)">
+    <div class="modal-box">
+        <div class="modal-header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4F8EF7" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <h3>AI Data Health Report</h3>
+            <button class="modal-close" onclick="document.getElementById('aiSummaryModal').style.display='none'">✕</button>
+        </div>
+        <div class="modal-body" id="aiSummaryModalBody">
+            <div class="modal-spinner"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Toast notification ────────────────────────────────────────── -->
+<div class="toast-wrap" id="toast" style="display:none">
+    <span id="toastMsg"></span>
+</div>
+
+<!-- ── Loading overlay ──────────────────────────────────────────── -->
+<div class="loading-overlay" id="loadingOverlay" style="display:none">
+    <div class="spinner"></div>
+    <p id="loadingText">Processing…</p>
+</div>
+
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
