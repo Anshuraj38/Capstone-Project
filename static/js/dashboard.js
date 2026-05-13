@@ -321,3 +321,106 @@ function removeTyping(id) {
     if (el) el.remove();
 }
 
+// ── NEW: AI Summary ───────────────────────────────────────────────
+function fetchAiSummary(asBanner = false) {
+    if (!fileLoaded) { showToast('Upload a file first.', 'error'); return; }
+
+    if (!asBanner) {
+        // Show modal
+        const modal = document.getElementById('aiSummaryModal');
+        const body = document.getElementById('aiSummaryModalBody');
+        modal.style.display = 'flex';
+        body.innerHTML = '<div class="modal-spinner"></div>';
+    } else {
+        const banner = document.getElementById('aiSummaryBanner');
+        const text = document.getElementById('aiSummaryText');
+        banner.style.display = 'flex';
+        text.textContent = 'Generating AI health report…';
+    }
+
+    fetch('/ai_summary')
+        .then(r => r.json())
+        .then(data => {
+            if (asBanner) {
+                document.getElementById('aiSummaryText').textContent =
+                    data.error ? `⚠ ${data.error}` : data.summary;
+            } else {
+                const body = document.getElementById('aiSummaryModalBody');
+                body.innerHTML = data.error
+                    ? `<p class="modal-error">⚠ ${escapeHtml(data.error)}</p>`
+                    : `<p class="modal-summary">${escapeHtml(data.summary)}</p>`;
+            }
+        })
+        .catch(() => {
+            if (asBanner) {
+                document.getElementById('aiSummaryText').textContent = '⚠ Could not load AI summary.';
+            } else {
+                document.getElementById('aiSummaryModalBody').innerHTML =
+                    '<p class="modal-error">⚠ Could not reach the AI.</p>';
+            }
+        });
+}
+
+function closeAiSummaryModal(e) {
+    if (e.target === document.getElementById('aiSummaryModal')) {
+        document.getElementById('aiSummaryModal').style.display = 'none';
+    }
+}
+
+// ── Export ────────────────────────────────────────────────────────
+function exportFile() {
+    showToast('Preparing export…', 'info');
+    window.location.href = '/export';
+    updateStepper('export');
+}
+
+// ── Stepper ───────────────────────────────────────────────────────
+function updateStepper(phase) {
+    const phases = ['upload', 'profiling', 'clean', 'export'];
+    const ids = ['step1', 'step2', 'step3', 'step4'];
+    const phaseIdx = phases.indexOf(phase);
+
+    ids.forEach((id, i) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.className = 'step';
+        el.querySelector('.step-status').textContent = '';
+        if (i < phaseIdx) {
+            el.classList.add('done');
+            el.querySelector('.step-status').textContent = '(Complete)';
+        } else if (i === phaseIdx) {
+            el.classList.add('active');
+            el.querySelector('.step-status').textContent = '(In Progress)';
+        }
+    });
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+function showToast(msg, type = 'success') {
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toastMsg');
+    toastMsg.textContent = msg;
+    toast.style.background = type === 'error' ? '#ef4444'
+        : type === 'info' ? '#4F8EF7' : '#22c55e';
+    toast.style.display = 'block';
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 3500);
+}
+
+// ── Loading ───────────────────────────────────────────────────────
+function showLoading(text) {
+    document.getElementById('loadingText').textContent = text || 'Processing…';
+    document.getElementById('loadingOverlay').style.display = 'flex';
+}
+function hideLoading() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+// ── Utils ─────────────────────────────────────────────────────────
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
