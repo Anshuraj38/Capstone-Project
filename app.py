@@ -57,3 +57,25 @@ class User(db.Model):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+def load_dataframe(filepath):
+    ext = filepath.rsplit('.', 1)[1].lower()
+    if ext == 'csv':
+        return pd.read_csv(filepath)
+    else:
+        return pd.read_excel(filepath)
+
+def _save_df(df, filepath):
+    """DRY helper – saves df back to original format."""
+    ext = filepath.rsplit('.', 1)[1].lower()
+    if ext == 'csv':
+        df.to_csv(filepath, index=False)
+    else:
+        df.to_excel(filepath, index=False)
