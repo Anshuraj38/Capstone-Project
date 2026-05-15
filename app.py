@@ -196,3 +196,104 @@ def build_schema_summary(df):
         lines.append(f"  - {col} ({df[col].dtype}): {missing} missing, sample={sample_vals}")
     return "\n".join(lines)
 
+# ─── Auth Routes ──────────────────────────────────────────────────────────────
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    error = None
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        user = User.query.filter_by(email=email).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
+            session['user_name'] = user.name
+            return redirect(url_for('dashboard'))
+        else:
+            error = 'Invalid email or password.'
+    return render_template('login.html', error=error)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    error = None
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        confirm = request.form.get('confirm_password', '')
+
+        if not name or not email or not password:
+            error = 'All fields are required.'
+        elif password != confirm:
+            error = 'Passwords do not match.'
+        elif User.query.filter_by(email=email).first():
+            error = 'An account with this email already exists.'
+        else:
+            hashed = generate_password_hash(password)
+            new_user = User(name=name, email=email, password=hashed)
+            db.session.add(new_user)
+            db.session.commit()
+            return redirect(url_for('login'))
+    return render_template('register.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+# ─── Dashboard ────────────────────────────────────────────────────────────────
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    return render_template('dashboard.html', user_name=session.get('user_name', 'User'))
+
+# ─── File Upload ──────────────────────────────────────────────────────────────
+@app.route('/upload', methods=['POST'])
+@login_required
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Only CSV and Excel files are supported'}), 400
+
+    # ── Per-user storage to avoid filename collisions ──────────────────────────
+    user_folder = os.path.join(app.config['UPLOAD_FOLDER'], str(session['user_id']))
+    os.makedirs(user_folder, exist_ok=True)
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(user_folder, filename)
+    file.save(filepath)
+
+    session['current_file'] = filepath
+    session['current_filename'] = filename
+
+    try:
+        df = load_dataframe(filepath)
+        profile = profile_dataframe(df)
+        suggestions = generate_suggestions(df)
+        return jsonify({'success': True, 'filename': filename,
+                        'profile': profile, 'suggestions': suggestions})
+    except Exception as e:
+        return jsonify({'error': f'Could not parse file: {str(e)}'}), 500
+
+# ─── Profile Endpoint ─────────────────────────────────────────────────────────
+@app.route('/profile', methods=['GET'])
+@login_required
+def get_profile():
+    filepath = session.get('current_file')
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({'error': 'No file loaded'}), 400
+    try:
+        df = load_dataframe(filepath)
+        profile = profile_dataframe(df)
+        suggestions = generate_suggestions(df)
+        return jsonify({'profile': profile, 'suggestions': suggestions})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
