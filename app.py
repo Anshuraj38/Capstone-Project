@@ -16,8 +16,10 @@ from functools import wraps
 
 # ─── App Configuration ────────────────────────────────────────────────────────
 app = Flask(__name__)
-app.secret_key = 'ilios-secret-key-2024'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ilios.db'
+app.secret_key = os.environ.get('SECRET_KEY', 'ilios-secret-key-2024')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL', 'sqlite:///ilios.db'
+).replace('postgres://', 'postgresql://')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max upload
@@ -589,4 +591,5 @@ def export_file():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, port=5050)
+    port = int(os.environ.get('PORT', 5050))
+    app.run(host='0.0.0.0', port=port, debug=False)

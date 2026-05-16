@@ -1,0 +1,10 @@
+flask
+flask-sqlalchemy
+werkzeug
+pandas
+numpy
+google-generativeai
+openpyxl
+xlrd
+gunicorn
+psycopg2-binary
