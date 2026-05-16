@@ -297,3 +297,296 @@ def get_profile():
         return jsonify({'profile': profile, 'suggestions': suggestions})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# ─── Apply Cleaning (rule-based) ──────────────────────────────────────────────
+@app.route('/clean', methods=['POST'])
+@login_required
+def apply_cleaning():
+    filepath = session.get('current_file')
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({'error': 'No file loaded'}), 400
+
+    data = request.get_json()
+    action = data.get('action')
+    column = data.get('column')
+
+    try:
+        df = load_dataframe(filepath)
+
+        if action == 'fill_median' and column:
+            df[column] = df[column].fillna(df[column].median())
+        elif action == 'fill_mode' and column:
+            df[column] = df[column].fillna(df[column].mode()[0])
+        elif action == 'drop_duplicates':
+            df = df.drop_duplicates()
+        elif action == 'normalize_text' and column:
+            df[column] = df[column].str.strip().str.lower().str.title()
+        elif action == 'remove_outliers' and column:
+            Q1 = df[column].quantile(0.25)
+            Q3 = df[column].quantile(0.75)
+            IQR = Q3 - Q1
+            df = df[~((df[column] < (Q1 - 1.5 * IQR)) | (df[column] > (Q3 + 1.5 * IQR)))]
+        elif action == 'drop_missing' and column:
+            df = df.dropna(subset=[column])
+        else:
+            return jsonify({'error': 'Unknown action'}), 400
+
+        _save_df(df, filepath)
+        profile = profile_dataframe(df)
+        suggestions = generate_suggestions(df)
+        return jsonify({'success': True, 'profile': profile, 'suggestions': suggestions})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ─── NEW: Natural Language Cleaning via Gemini ────────────────────────────────
+@app.route('/ai_clean', methods=['POST'])
+@login_required
+def ai_clean():
+    """
+    Accepts a plain-English instruction from the user.
+    Gemini interprets it, returns safe pandas code, which we execute on the df.
+
+    Request JSON: { "instruction": "remove rows where age is negative" }
+    Response JSON: { "success": True, "message": "...", "rows_affected": N,
+                     "profile": {...}, "suggestions": [...] }
+    """
+    filepath = session.get('current_file')
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({'error': 'No file loaded'}), 400
+
+    data = request.get_json()
+    instruction = (data.get('instruction') or '').strip()
+    if not instruction:
+        return jsonify({'error': 'No instruction provided'}), 400
+
+    if gemini_model is None:
+        return jsonify({'error': 'AI features are unavailable. Install google-generativeai and set GOOGLE_API_KEY.'}), 503
+
+    try:
+        df = load_dataframe(filepath)
+        schema = build_schema_summary(df)
+
+        system_prompt = """You are a data cleaning assistant.
+IMPORTANT: You must ALWAYS return a code block and a short explanation, even if you are unsure.
+If a requested column does not exist, handle it gracefully or create it.
+
+Return ONLY this format:
+```python
+# your code here
+```
+EXPLANATION: <one sentence>
+
+The user will give you a plain-English instruction to clean a pandas DataFrame called `df`.
+Your code must:
+1. Modify `df` in-place or reassign it.
+2. Use ONLY pandas / numpy operations.
+3. Assign the final DataFrame back to `df`.
+4. Not import any modules.
+
+IMPORTANT SAFETY RULES:
+- Never use os, sys, subprocess, open(), exec(), eval() or any file I/O.
+- Only read/write the `df` variable.
+- If the instruction is unclear or unsafe, return: CANNOT_DO: <reason>
+"""
+
+        user_msg = f"""Dataset schema:
+{schema}
+
+User instruction: "{instruction}"
+"""
+
+        full_prompt = system_prompt + "\n\n" + user_msg
+
+        response = gemini_model.generate_content(full_prompt, generation_config=genai.types.GenerationConfig(max_output_tokens=512))
+
+        reply = response.text.strip()
+        app.logger.debug('Gemini reply: %s', reply)
+
+        # ── Handle refusal ────────────────────────────────────────────────────
+        if reply.startswith("CANNOT_DO:"):
+            reason = reply.replace("CANNOT_DO:", "").strip()
+            return jsonify({'error': f'Gemini could not process this: {reason}'}), 422
+
+        # ── Extract code block ─────────────────────────────────────────────────────
+        if "```python" in reply:
+            code_part = reply.split("```python")[1].split("```")[0].strip()
+        elif "```" in reply:
+            code_part = reply.split("```")[1].split("```")[0].strip()
+        else:
+            app.logger.debug('Gemini unexpected response without code fence: %s', reply)
+            return jsonify({
+                'error': 'Gemini returned an unexpected response. Please rephrase your instruction.',
+                'gemini_reply': reply[:800]
+            }), 422
+
+        # ── Safety: block dangerous keywords ─────────────────────────────────
+        banned = ['import ', 'os.', 'sys.', 'subprocess', 'open(', 'exec(', 'eval(', '__']
+        for b in banned:
+            if b in code_part:
+                return jsonify({'error': 'Instruction contains unsafe operations.'}), 422
+
+        # ── Extract explanation ───────────────────────────────────────────────
+        explanation = "Cleaning applied successfully."
+        if "EXPLANATION:" in reply:
+            explanation = reply.split("EXPLANATION:")[1].strip()
+
+        # ── Execute the code ──────────────────────────────────────────────────
+        rows_before = len(df)
+        local_vars = {'df': df, 'pd': pd, 'np': np}
+        exec(code_part, {"__builtins__": {}}, local_vars)
+        df = local_vars['df']
+        rows_after = len(df)
+
+        _save_df(df, filepath)
+        profile = profile_dataframe(df)
+        suggestions = generate_suggestions(df)
+
+        return jsonify({
+            'success': True,
+            'message': explanation,
+            'rows_affected': rows_before - rows_after,
+            'code_applied': code_part,
+            'profile': profile,
+            'suggestions': suggestions
+        })
+
+    except SyntaxError as e:
+        return jsonify({'error': f'Generated code had a syntax error: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ─── NEW: Ask Gemini About Your Data ─────────────────────────────────────────
+@app.route('/ask', methods=['POST'])
+@login_required
+def ask_about_data():
+    """
+    Let users ask free-form questions about their dataset.
+    e.g. "Which column has the most missing values?"
+         "What does the Age column look like?"
+         "Should I remove outliers from Salary?"
+
+    Request JSON : { "question": "..." }
+    Response JSON: { "answer": "..." }
+    """
+    filepath = session.get('current_file')
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({'error': 'No file loaded'}), 400
+
+    data = request.get_json()
+    question = (data.get('question') or '').strip()
+    if not question:
+        return jsonify({'error': 'No question provided'}), 400
+
+    try:
+        df = load_dataframe(filepath)
+        schema = build_schema_summary(df)
+
+        # Compute basic stats for numeric columns to give Gemini richer context
+        stats_lines = []
+        for col in df.select_dtypes(include=[np.number]).columns:
+            stats_lines.append(
+                f"  {col}: min={df[col].min():.2f}, max={df[col].max():.2f}, "
+                f"mean={df[col].mean():.2f}, std={df[col].std():.2f}"
+            )
+        stats_summary = "\n".join(stats_lines) if stats_lines else "  (no numeric columns)"
+
+        system_prompt = """You are a friendly data analyst assistant helping a non-technical user 
+understand and clean their dataset. Answer questions in plain English — no jargon, 
+no code blocks unless specifically asked. Keep responses concise (2-4 sentences max). 
+Be encouraging and helpful."""
+
+        user_msg = f"""Dataset schema:
+{schema}
+
+Numeric column statistics:
+{stats_summary}
+
+User question: "{question}"
+"""
+
+        full_prompt = system_prompt + "\n\n" + user_msg
+
+        response = gemini_model.generate_content(full_prompt, generation_config=genai.types.GenerationConfig(max_output_tokens=400))
+
+        answer = response.text.strip()
+        return jsonify({'answer': answer})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ─── NEW: AI-Powered Summary of the Dataset ───────────────────────────────────
+@app.route('/ai_summary', methods=['GET'])
+@login_required
+def ai_summary():
+    """
+    Returns a plain-English summary of the dataset's quality issues
+    and recommended next steps — generated by Gemini.
+    """
+    filepath = session.get('current_file')
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({'error': 'No file loaded'}), 400
+
+    try:
+        df = load_dataframe(filepath)
+        profile = profile_dataframe(df)
+        schema = build_schema_summary(df)
+
+        system_prompt = """You are a friendly data quality analyst. 
+Write a short, plain-English paragraph (4-6 sentences) summarising the health of 
+this dataset for a non-technical user. Mention the biggest problems and give 2-3 
+concrete, prioritised next steps. No bullet points — write in natural prose."""
+
+        user_msg = f"""Dataset profile:
+{schema}
+
+Quality score: {profile['quality_score']}/100
+Missing values: {profile['missing']} ({profile['missing_pct']}%)
+Duplicate rows: {profile['duplicates']}
+Schema issues: {profile['schema_issues']}
+"""
+
+        full_prompt = system_prompt + "\n\n" + user_msg
+
+        if gemini_model is None:
+            return jsonify({'error': 'AI features are unavailable. Install google-generativeai and set GOOGLE_API_KEY.'}), 503
+
+        response = gemini_model.generate_content(full_prompt, generation_config=genai.types.GenerationConfig(max_output_tokens=300))
+
+        summary = response.text.strip()
+        return jsonify({'summary': summary})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ─── Export Cleaned File ──────────────────────────────────────────────────────
+@app.route('/export')
+@login_required
+def export_file():
+    filepath = session.get('current_file')
+    filename = session.get('current_filename', 'cleaned_data.csv')
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({'error': 'No file to export'}), 400
+    try:
+        df = load_dataframe(filepath)
+        output = io.StringIO()
+        df.to_csv(output, index=False)
+        output.seek(0)
+        clean_name = 'cleaned_' + filename.rsplit('.', 1)[0] + '.csv'
+        return send_file(
+            io.BytesIO(output.getvalue().encode()),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=clean_name
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ─── Run ──────────────────────────────────────────────────────────────────────
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True, port=5050)
